@@ -1,9 +1,12 @@
 from flask import Flask, render_template, request
 import random
 
+# 🔥 Import AI functions
+from detection_ai import start_ai_detection, get_bus_data
+
 app = Flask(__name__)
 
-# Bus Data
+# Bus Data (UNCHANGED)
 buses = {
     1: {
         "name": "KSRTC City Express",
@@ -25,22 +28,23 @@ buses = {
     }
 }
 
-# Home Page
+# Home Page (UNCHANGED)
 @app.route("/")
 def home():
     return render_template("index.html")
 
 
-# Search Results Page
+# Search Results Page (UNCHANGED)
 @app.route("/search", methods=["POST"])
 def search():
     source = request.form.get("source")
     destination = request.form.get("destination")
 
-    # Simulate arrival times
     bus_list = []
+
     for bus_id, bus in buses.items():
         arrival_time = random.randint(1, 10)
+
         bus_list.append({
             "id": bus_id,
             "name": bus["name"],
@@ -48,67 +52,40 @@ def search():
             "arrival": f"Arriving in {arrival_time} mins"
         })
 
-    return render_template("bus_list.html",
-                           source=source,
-                           destination=destination,
-                           buses=bus_list)
+    return render_template(
+        "bus_list.html",
+        source=source,
+        destination=destination,
+        buses=bus_list
+    )
 
 
-# Bus Detail Page
+# Bus Detail Page (UNCHANGED)
 @app.route("/bus/<int:bus_id>")
 def bus_detail(bus_id):
     bus = buses.get(bus_id)
-
     if not bus:
         return "Bus Not Found", 404
 
-    return render_template("bus_detail.html",
-                           bus_id=bus_id,
-                           bus=bus)
+    return render_template(
+        "bus_detail.html",
+        bus_id=bus_id,
+        bus=bus
+    )
 
 
-# API for real-time updates
+# 🔥 AI-Based Real-Time API (UPDATED)
 @app.route("/api/bus/<int:bus_id>")
 def bus_api(bus_id):
-    bus = buses.get(bus_id)
-
-    if not bus:
+    try:
+        # Get live data from AI module
+        data = get_bus_data(bus_id)
+        return data
+    except:
         return {"error": "Bus not found"}, 404
 
-    change = random.randint(-3, 5)
-    bus["passengers"] += change
 
-    if bus["passengers"] < 0:
-        bus["passengers"] = 0
-
-    if bus["passengers"] > bus["total_seats"]:
-        bus["passengers"] = bus["total_seats"]
-
-    available = bus["total_seats"] - bus["passengers"]
-
-    occupancy = bus["passengers"] / bus["total_seats"]
-
-    if occupancy < 0.4:
-        crowd = "Low"
-    elif occupancy < 0.75:
-        crowd = "Medium"
-    else:
-        crowd = "High"
-
-    return {
-        "passengers": bus["passengers"],
-        "available": available,
-        "crowd": crowd
-    }
-
-
+# 🔥 Start AI detection when app starts
 if __name__ == "__main__":
+    start_ai_detection()
     app.run(debug=True)
-   
-
-  
-
-
-    
-    
-             
