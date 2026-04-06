@@ -1,11 +1,28 @@
 import cv2
 import threading
+import numpy as np
+import time
 from ultralytics import YOLO
 
-# Load YOLO model
-model = YOLO("yolov8n.pt")
+model = YOLO("yolov8s.pt")
 
-# Seat capacity for each bus (15–20 range)
+# 🔵 QUALITY CONTROL (100 = best quality)
+QUALITY = 100   # try: 100, 80, 60, 40, 20
+
+def apply_quality(frame, quality):
+    if quality == 100:
+        return frame
+
+    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
+    result, encimg = cv2.imencode('.jpg', frame, encode_param)
+
+    if not result:
+        return frame
+
+    decimg = cv2.imdecode(encimg, 1)
+    return decimg
+
+
 BUS_SEATS = {
     1: 18,
     2: 20,
@@ -30,6 +47,12 @@ latest_frames = {
     3: None
 }
 
+SEAT_POSITIONS = {
+    1: [(50,100,150,200),(160,100,260,200),(270,100,370,200)],
+    2: [(60,120,160,220),(180,120,280,220),(300,120,400,220)],
+    3: [(70,130,170,230),(190,130,290,230),(310,130,410,230)]
+}
+
 
 def process_video(bus_id):
 
@@ -41,6 +64,8 @@ def process_video(bus_id):
 
     print(f"✅ AI started for Bus {bus_id}")
 
+    prev_passengers = 0
+
     while True:
 
         ret, frame = cap.read()
@@ -49,9 +74,25 @@ def process_video(bus_id):
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
             continue
 
+        frame = cv2.resize(frame, (640, 480))
+
+        # 🔵 APPLY QUALITY ONLY
+        frame = apply_quality(frame, QUALITY)
+
+        # ✅ SPEED MEASUREMENT START
+        start_time = time.time()
+
         results = model(frame)
 
+        # ✅ SPEED MEASUREMENT END
+        end_time = time.time()
+
+        fps = 1 / (end_time - start_time)
+
+        print(f"Bus {bus_id} FPS: {fps:.2f}")
+
         passengers = 0
+        person_boxes = []
 
         for r in results:
             for box in r.boxes:
@@ -59,7 +100,7 @@ def process_video(bus_id):
                 cls = int(box.cls[0])
                 conf = float(box.conf[0])
 
-                if cls == 0 and conf > 0.6:
+                if cls == 0 and conf > 0.3:
 
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
 
@@ -70,11 +111,29 @@ def process_video(bus_id):
                                   2)
 
                     passengers += 1
+                    person_boxes.append((x1, y1, x2, y2))
+
+        passengers = int((passengers + prev_passengers) / 2)
+        prev_passengers = passengers
+
+        # Seat visualization only
+        seat_regions = SEAT_POSITIONS.get(bus_id, [])
+
+        for seat in seat_regions:
+            sx1, sy1, sx2, sy2 = seat
+            occupied = False
+
+            for (x1, y1, x2, y2) in person_boxes:
+                if not (x2 < sx1 or x1 > sx2 or y2 < sy1 or y1 > sy2):
+                    occupied = True
+                    break
+
+            color = (0, 0, 255) if occupied else (255, 0, 0)
+            cv2.rectangle(frame, (sx1, sy1), (sx2, sy2), color, 2)
 
         capacity = BUS_SEATS[bus_id]
 
         available = capacity - passengers
-
         if available < 0:
             available = 0
 
